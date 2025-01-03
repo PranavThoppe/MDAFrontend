@@ -1,54 +1,71 @@
+from flask import Flask, jsonify
+from flask_cors import CORS
 import yfinance as yf
-import pandas as pd
 
+app = Flask(__name__)
+CORS(app)
 
-def get_moving_averages(ticker_symbol, short_window=8, long_window=50):
+def get_moving_averages(ticker_input):
     """
-    Calculate moving averages for a given stock
-    
-    Parameters:
-    ticker_symbol (str): Stock ticker symbol
-    short_window (int): Short-term moving average window (default: 8)
-    long_window (int): Long-term moving average window (default: 50)
+    Calculate 8-day and 50-day moving averages for given stocks
     """
     tickers = [ticker.strip().upper() for ticker in ticker_input.split(',')]
-    
-    results = {}
+    response_data = {
+        'success': True,
+        'data': {},
+        'errors': []
+    }
     
     for ticker_symbol in tickers:
         try:
             # Get stock data
             stock = yf.Ticker(ticker_symbol)
-            # Get historical data for the past year
-            hist = stock.history(period="1y")
+            hist = stock.history(period='3mo')  # Get enough data for 50-day MA
+            
+            if hist.empty:
+                response_data['errors'].append({
+                    'ticker': ticker_symbol,
+                    'error': 'No data available for the given ticker symbol'
+                })
+                continue
             
             # Calculate moving averages
-            hist[f'MA{short_window}'] = hist['Close'].rolling(window=short_window).mean()
-            hist[f'MA{long_window}'] = hist['Close'].rolling(window=long_window).mean()
+            ma8 = hist['Close'].rolling(window=8).mean().iloc[-1]
+            ma50 = hist['Close'].rolling(window=50).mean().iloc[-1]
             
-            # Get the most recent values
-            latest_short_ma = hist[f'MA{short_window}'].iloc[-1]
-            latest_long_ma = hist[f'MA{long_window}'].iloc[-1]
-            latest_price = hist['Close'].iloc[-1]
-            
-            print(f"\nLatest {ticker_symbol} Statistics:")
-            print(f"Current Price: ${latest_price:.2f}")
-            print(f"{short_window}-day Moving Average: ${latest_short_ma:.2f}")
-            print(f"{long_window}-day Moving Average: ${latest_long_ma:.2f}")
-            
-            results[ticker_symbol] = {
-                'current_price': latest_price,
-                f'MA{short_window}': latest_short_ma,
-                f'MA{long_window}': latest_long_ma,
-                'history': hist
+            response_data['data'][ticker_symbol] = {
+                'MA8': round(ma8, 2),
+                'MA50': round(ma50, 2)
             }
             
         except Exception as e:
-            print(f"\nError processing {ticker_symbol}: {str(e)}")
+            response_data['errors'].append({
+                'ticker': ticker_symbol,
+                'error': str(e)
+            })
     
-    return results
+    if len(response_data['errors']) > 0:
+        response_data['success'] = False
+    
+    return response_data
 
-if __name__ == "__main__":
-    # Example usage with multiple tickers
-    ticker_input = input("Enter ticker symbols (comma-separated, e.g., META,AAPL,GOOGL): ")
-    get_moving_averages(ticker_input)
+@app.route('/api/stock-analysis/<tickers>')
+def analyze_stocks(tickers):
+    try:
+        if not tickers:
+            return jsonify({
+                'success': False,
+                'error': 'No ticker symbols provided'
+            }), 400
+            
+        result = get_moving_averages(tickers)
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
