@@ -17,7 +17,7 @@ const App = () => {
 
     setError(null); // Clear previous errors
     console.log(tickers);
-    const response = await axios.get(`http://moving-average-flask-app.vercel.app/api/stock-analysis/${tickers}`);
+    const response = await axios.get(`https://moving-average-flask-app.vercel.app/api/stock-analysis/${tickers}`);
     console.log(response.data);
     setResults(response.data);
   };
